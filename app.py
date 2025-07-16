@@ -82,32 +82,54 @@ def calculate_total(guests_under_5, guests_5_to_12, guests_above_12):
 def generate_emv_code(key, amount, merchant_name, city, tx_id="***"):
     """Generate a valid PIX EMV code (BR Code)."""
     def compute_crc16(payload):
-        crc16 = crcmod.predefined.Crc('crc-16-ccitt-false')
+        crc16 = crcmod.predefined.Crc('crc-ccitt-false')
         crc16.update(payload.encode('utf-8'))
         return format(crc16.crcValue, '04X')
     
     # Format amount with 2 decimal places
     formatted_amount = f"{amount:.2f}"
     
+    # Build TLV format helper
+    def tlv(tag, value):
+        return f"{tag:02d}{len(value):02d}{value}"
+    
     # Build the PIX payload
-    payload_parts = [
-        "00", "02", "01",  # Payload Format Indicator
-        "01", "12", "BR.GOV.BCB.PIX",  # Merchant Account Info - PIX
-        "01", f"{len(key):02d}", key,  # PIX Key
-        "52", "04", "0000",  # Merchant Category Code
-        "53", "03", "986",  # Transaction Currency (BRL)
-        "54", f"{len(formatted_amount):02d}", formatted_amount,  # Transaction Amount
-        "58", "02", "BR",  # Country Code
-        "59", f"{len(merchant_name):02d}", merchant_name[:25],  # Merchant Name (max 25 chars)
-        "60", f"{len(city):02d}", city[:15],  # Merchant City (max 15 chars)
-        "62", "07", "05", "03", tx_id,  # Additional Data Field Template
-    ]
+    payload = ""
     
-    # Join all parts
-    payload = "".join(payload_parts)
+    # Payload Format Indicator
+    payload += tlv(0, "01")
     
-    # Add CRC16
+    # Merchant Account Information - PIX
+    pix_data = tlv(0, "BR.GOV.BCB.PIX") + tlv(1, key)
+    payload += tlv(26, pix_data)
+    
+    # Merchant Category Code
+    payload += tlv(52, "0000")
+    
+    # Transaction Currency (BRL)
+    payload += tlv(53, "986")
+    
+    # Transaction Amount
+    payload += tlv(54, formatted_amount)
+    
+    # Country Code
+    payload += tlv(58, "BR")
+    
+    # Merchant Name (max 25 chars)
+    payload += tlv(59, merchant_name[:25])
+    
+    # Merchant City (max 15 chars)
+    payload += tlv(60, city[:15])
+    
+    # Additional Data Field Template
+    if tx_id != "***":
+        additional_data = tlv(5, tx_id)
+        payload += tlv(62, additional_data)
+    
+    # CRC16 (placeholder)
     payload += "6304"
+    
+    # Calculate and append CRC16
     crc = compute_crc16(payload)
     payload += crc
     
@@ -185,7 +207,7 @@ def show_guest_form():
             st.session_state.participant_data = None
             st.rerun()
     else:
-        st.markdown("### 👥 Informações sobre Acompanhantes")
+        st.markdown("### 👥 Informações sobre Participantes")
         
         col1, col2, col3 = st.columns(3)
         
