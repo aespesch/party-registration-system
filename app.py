@@ -1,507 +1,408 @@
-"""fe
-Main Streamlit application for party registration and payment.
-This file orchestrates the entire user flow from name verification to payment.
+"""
+Party Registration System - Main Application
+A complete web system for managing event attendance confirmations and payments.
 """
 
 import streamlit as st
 import pandas as pd
 import qrcode
 from io import BytesIO
+import base64
 import os
 from datetime import datetime
-import hashlib
+import unicodedata
+import re
+import uuid
+import crcmod
+from config import *
 
-# Import our configuration settings
-from config import (
-    PRICING, PIX_KEY, PIX_MERCHANT_NAME, PIX_CITY,
-    PARTICIPANTS_FILE, MESSAGES, MAX_GUESTS_PER_CATEGORY,
-    PAGE_CONFIG, EVENT_NAME, EVENT_DATE, EVENT_LOCATION,
-    FEATURES
-)
-
-# Configure the Streamlit page using our centralized settings
+# Page configuration
 st.set_page_config(**PAGE_CONFIG)
 
-# Initialize session state variables
-# Session state allows us to maintain data between page reloads
-def initialize_session_state():
-    """
-    Initialize all session state variables if they don't exist.
-    This prevents errors and ensures clean state management.
-    """
-    defaults = {
-        'step': 'name_input',
-        'participant_name': '',
-        'participant_data': None,
-        'will_attend': None,
-        'guest_data': None,
-        'confirmation_id': None
-    }
-    
-    for key, default_value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_value
+# Initialize session state
+if 'confirmed' not in st.session_state:
+    st.session_state.confirmed = False
+if 'participant_data' not in st.session_state:
+    st.session_state.participant_data = None
+if 'show_payment' not in st.session_state:
+    st.session_state.show_payment = False
+if 'guest_counts' not in st.session_state:
+    st.session_state.guest_counts = None
+if 'total_amount' not in st.session_state:
+    st.session_state.total_amount = 0
 
-# Load participants from CSV file
-@st.cache_data  # This decorator caches the data to improve performance
-def load_participants():
+def normalize_name(name):
     """
-    Load participant data from CSV file.
-    Returns a DataFrame with participant information.
+    Normalize name for comparison by removing accents, extra spaces, 
+    and converting to lowercase.
     """
-    try:
-        # Check if file exists
-        if not os.path.exists(PARTICIPANTS_FILE):
-            st.error(f"Arquivo de participantes não encontrado: {PARTICIPANTS_FILE}")
-            return pd.DataFrame()
-        
-        # Read CSV with proper encoding for Portuguese characters
-        df = pd.read_csv(PARTICIPANTS_FILE, encoding='utf-8')
-        
-        # Validate required columns
-        required_columns = ['full_name', 'age', 'email', 'participant_id']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        
-        if missing_columns:
-            st.error(f"Colunas faltando no CSV: {missing_columns}")
-            return pd.DataFrame()
-        
-        # CORREÇÃO: Converter coluna 'full_name' para string
-        df['full_name'] = df['full_name'].astype(str)
-        
-        return df
+    # Remove leading/trailing spaces
+    name = name.strip()
     
-    except Exception as e:
-        st.error(f"Erro ao carregar participantes: {str(e)}")
+    # Convert to lowercase
+    name = name.lower()
+    
+    # Remove accents
+    name = unicodedata.normalize('NFKD', name)
+    name = ''.join([c for c in name if not unicodedata.combining(c)])
+    
+    # Replace multiple spaces with single space
+    name = re.sub(r'\s+', ' ', name)
+    
+    return name
+
+def load_participants():
+    """Load participants from CSV file."""
+    try:
+        df = pd.read_csv(PARTICIPANTS_FILE)
+        return df
+    except FileNotFoundError:
+        st.error(f"Arquivo {PARTICIPANTS_FILE} não encontrado!")
         return pd.DataFrame()
 
-def generate_pix_payload(amount, participant_name, confirmation_id):
-    """
-    Generate a PIX payment payload following the Brazilian Central Bank standard.
-    This creates the actual data that goes into the QR code.
+def find_participant(name, participants_df):
+    """Find participant in the list with flexible name matching."""
+    normalized_input = normalize_name(name)
     
-    Note: This is a simplified version. For production, use a proper PIX library
-    like python-pix or pixqrcodegen.
-    """
-    # Basic PIX payload structure (simplified for demonstration)
+    for idx, row in participants_df.iterrows():
+        if 'full_name' in row:
+            normalized_db = normalize_name(row['full_name'])
+            if normalized_input == normalized_db:
+                return row
+    
+    return None
+
+def calculate_total(guests_under_5, guests_5_to_12, guests_above_12):
+    """Calculate total amount based on guest counts."""
+    total = (guests_under_5 * PRICING['under_5'] + 
+             guests_5_to_12 * PRICING['5_to_12'] + 
+             guests_above_12 * PRICING['above_12'])
+    return total
+
+def generate_emv_code(key, amount, merchant_name, city, tx_id="***"):
+    """Generate a valid PIX EMV code (BR Code)."""
+    def compute_crc16(payload):
+        crc16 = crcmod.predefined.Crc('crc-16-ccitt-false')
+        crc16.update(payload.encode('utf-8'))
+        return format(crc16.crcValue, '04X')
+    
+    # Format amount with 2 decimal places
+    formatted_amount = f"{amount:.2f}"
+    
+    # Build the PIX payload
     payload_parts = [
-        "00020126",  # Payload Format Indicator
-        f"0014BR.GOV.BCB.PIX",  # GUI
-        f"01{len(PIX_KEY):02d}{PIX_KEY}",  # PIX Key
-        f"52040000",  # Merchant Category Code
-        f"5303986",  # Transaction Currency (986 = BRL)
-        f"54{len(f'{amount:.2f}'):02d}{amount:.2f}",  # Transaction Amount
-        f"5802BR",  # Country Code
-        f"59{len(PIX_MERCHANT_NAME):02d}{PIX_MERCHANT_NAME}",  # Merchant Name
-        f"60{len(PIX_CITY):02d}{PIX_CITY}",  # Merchant City
-        f"62{len(confirmation_id)+4:02d}05{len(confirmation_id):02d}{confirmation_id}"  # Additional Data
+        "00", "02", "01",  # Payload Format Indicator
+        "01", "12", "BR.GOV.BCB.PIX",  # Merchant Account Info - PIX
+        "01", f"{len(key):02d}", key,  # PIX Key
+        "52", "04", "0000",  # Merchant Category Code
+        "53", "03", "986",  # Transaction Currency (BRL)
+        "54", f"{len(formatted_amount):02d}", formatted_amount,  # Transaction Amount
+        "58", "02", "BR",  # Country Code
+        "59", f"{len(merchant_name):02d}", merchant_name[:25],  # Merchant Name (max 25 chars)
+        "60", f"{len(city):02d}", city[:15],  # Merchant City (max 15 chars)
+        "62", "07", "05", "03", tx_id,  # Additional Data Field Template
     ]
     
     # Join all parts
     payload = "".join(payload_parts)
     
-    # Calculate CRC16 checksum (simplified - use proper implementation in production)
-    # For now, we'll use a placeholder
-    payload += "6304"  # CRC placeholder
+    # Add CRC16
+    payload += "6304"
+    crc = compute_crc16(payload)
+    payload += crc
     
     return payload
 
-def generate_qr_code(amount, participant_name):
-    """
-    Generate a QR code image for PIX payment.
-    Returns a BytesIO object containing the QR code image.
-    """
-    # Generate a unique confirmation ID
-    confirmation_id = hashlib.md5(
-        f"{participant_name}{datetime.now().isoformat()}".encode()
-    ).hexdigest()[:8].upper()
-    
-    # Store confirmation ID in session state for later use
-    st.session_state.confirmation_id = confirmation_id
-    
-    # Generate PIX payload
-    pix_payload = generate_pix_payload(amount, participant_name, confirmation_id)
-    
-    # Create QR code
-    qr = qrcode.QRCode(
-        version=1,  # Controls the size of the QR code
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
+def generate_pix_qr_code(amount, participant_name):
+    """Generate PIX QR Code for payment."""
+    pix_payload = generate_emv_code(
+        PIX_KEY,
+        amount,
+        PIX_MERCHANT_NAME,
+        PIX_CITY
     )
     
+    # Generate QR Code
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(pix_payload)
     qr.make(fit=True)
     
-    # Create image
     img = qr.make_image(fill_color="black", back_color="white")
     
-    # Convert to bytes for display in Streamlit
+    # Convert to bytes
     buf = BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
+    img.save(buf, format='PNG')
+    byte_img = buf.getvalue()
     
-    return buf, confirmation_id
+    return byte_img
 
-def calculate_total_cost(guest_data, include_participant=True):
-    """
-    Calculate the total cost based on guest ages and the participant.
-    
-    Args:
-        guest_data: Dictionary with keys 'under_5', '5_to_12', 'above_12'
-        include_participant: Whether to include the participant's own cost
-    
-    Returns:
-        Total cost in Brazilian Reais
-    """
-    total = 0
-    
-    # Calculate cost for each age group
-    total += guest_data.get('under_5', 0) * PRICING['under_5']
-    total += guest_data.get('5_to_12', 0) * PRICING['5_to_12']
-    total += guest_data.get('above_12', 0) * PRICING['above_12']
-    
-    # Add participant's cost (assuming they're above 12)
-    if include_participant:
-        total += PRICING['above_12']
-    
-    return total
-
-def save_confirmation(participant_data, guest_data, confirmation_id):
-    """
-    Save confirmation data to a CSV file for record keeping.
-    In production, this would save to a database.
-    """
+def save_confirmation(participant_data, guest_counts, total_amount):
+    """Save confirmation to CSV file."""
     # Create confirmations directory if it doesn't exist
-    os.makedirs('data/confirmations', exist_ok=True)
+    os.makedirs('./data', exist_ok=True)
     
-    # Prepare confirmation data
+    confirmation_id = str(uuid.uuid4())[:8]
+    
     confirmation_data = {
         'confirmation_id': confirmation_id,
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'participant_name': participant_data['full_name'],
-        'participant_id': participant_data['participant_id'],
-        'participant_email': participant_data['email'],
-        'guests_under_5': guest_data['under_5'],
-        'guests_5_to_12': guest_data['5_to_12'],
-        'guests_above_12': guest_data['above_12'],
-        'total_amount': calculate_total_cost(guest_data),
+        'participant_id': participant_data.get('id', ''),
+        'participant_email': participant_data.get('email', ''),
+        'guests_under_5': guest_counts['under_5'],
+        'guests_5_to_12': guest_counts['5_to_12'],
+        'guests_above_12': guest_counts['above_12'],
+        'total_amount': total_amount,
         'payment_status': 'pending'
     }
     
-    # Convert to DataFrame
-    df_confirmation = pd.DataFrame([confirmation_data])
-    
-    # Append to confirmations file
-    confirmations_file = 'data/confirmations/confirmations.csv'
-    
-    if os.path.exists(confirmations_file):
-        # Append to existing file
-        df_confirmation.to_csv(confirmations_file, mode='a', header=False, index=False)
+    # Check if file exists
+    file_path = './data/confirmations.csv'
+    if os.path.exists(file_path):
+        df = pd.read_csv(file_path)
+        df = pd.concat([df, pd.DataFrame([confirmation_data])], ignore_index=True)
     else:
-        # Create new file with headers
-        df_confirmation.to_csv(confirmations_file, index=False)
-
-# Main application flow
-def main():
-    """
-    Main application logic that controls the user flow.
-    """
-    # Initialize session state
-    initialize_session_state()
+        df = pd.DataFrame([confirmation_data])
     
-    # Load participants data
+    df.to_csv(file_path, index=False)
+    
+    return confirmation_id
+
+def show_guest_form():
+    """Show the guest information form."""
+    participant = st.session_state.participant_data
+    
+    st.markdown(f"### Bem-vindo(a), {participant['full_name']}! 👋")
+    
+    # Attendance confirmation
+    will_attend = st.radio("Você irá ao evento?", 
+                           ["Sim, confirmo presença", "Não poderei comparecer"])
+    
+    if will_attend == "Não poderei comparecer":
+        st.info(MESSAGES['thank_you_not_attending'])
+        if st.button("Finalizar"):
+            st.session_state.confirmed = False
+            st.session_state.participant_data = None
+            st.rerun()
+    else:
+        st.markdown("### 👥 Informações sobre Acompanhantes")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Crianças até 5 anos** (Grátis)")
+            guests_under_5 = st.number_input("Quantidade:", 
+                                              min_value=0, 
+                                              max_value=MAX_GUESTS_PER_CATEGORY,
+                                              value=0,
+                                              key="under_5")
+        
+        with col2:
+            st.markdown(f"**Crianças 5-12 anos** (R$ {PRICING['5_to_12']})")
+            guests_5_to_12 = st.number_input("Quantidade:", 
+                                              min_value=0, 
+                                              max_value=MAX_GUESTS_PER_CATEGORY,
+                                              value=0,
+                                              key="5_to_12")
+        
+        with col3:
+            st.markdown(f"**Acima de 12 anos** (R$ {PRICING['above_12']})")
+            guests_above_12 = st.number_input("Quantidade:", 
+                                               min_value=1,  # At least the participant
+                                               max_value=MAX_GUESTS_PER_CATEGORY,
+                                               value=1,
+                                               key="above_12")
+        
+        # Calculate total
+        guest_counts = {
+            'under_5': guests_under_5,
+            '5_to_12': guests_5_to_12,
+            'above_12': guests_above_12
+        }
+        
+        total_amount = calculate_total(guests_under_5, guests_5_to_12, guests_above_12)
+        
+        st.markdown("---")
+        st.markdown(f"### 💰 Valor Total: R$ {total_amount:.2f}")
+        
+        # Generate payment
+        if total_amount > 0:
+            if st.button("Gerar QR Code para Pagamento", type="primary"):
+                st.session_state.guest_counts = guest_counts
+                st.session_state.total_amount = total_amount
+                st.session_state.show_payment = True
+                st.rerun()
+        else:
+            # Free entry (only children under 5)
+            if st.button("Confirmar Presença", type="primary"):
+                confirmation_id = save_confirmation(participant, guest_counts, total_amount)
+                st.success(f"✅ Confirmação registrada! ID: {confirmation_id}")
+                st.info("Entrada gratuita confirmada!")
+                
+                if st.button("Nova Confirmação"):
+                    st.session_state.confirmed = False
+                    st.session_state.participant_data = None
+                    st.rerun()
+
+def show_payment_page():
+    """Show the payment page with QR code."""
+    participant = st.session_state.participant_data
+    guest_counts = st.session_state.guest_counts
+    total_amount = st.session_state.total_amount
+    
+    st.markdown(f"### 💳 Pagamento - {participant['full_name']}")
+    st.markdown("---")
+    
+    # Save confirmation
+    confirmation_id = save_confirmation(participant, guest_counts, total_amount)
+    
+    # Generate QR Code
+    qr_img = generate_pix_qr_code(total_amount, participant['full_name'])
+    
+    # Display QR Code
+    st.markdown("### 📱 QR Code PIX")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image(qr_img, width=300)
+    
+    # Display amount breakdown
+    st.markdown("### 📋 Resumo dos Valores")
+    
+    if guest_counts['under_5'] > 0:
+        st.markdown(f"- **Crianças até 5 anos:** {guest_counts['under_5']} × R$ {PRICING['under_5']:.2f} = R$ {guest_counts['under_5'] * PRICING['under_5']:.2f}")
+    
+    if guest_counts['5_to_12'] > 0:
+        st.markdown(f"- **Crianças 5-12 anos:** {guest_counts['5_to_12']} × R$ {PRICING['5_to_12']:.2f} = R$ {guest_counts['5_to_12'] * PRICING['5_to_12']:.2f}")
+    
+    if guest_counts['above_12'] > 0:
+        st.markdown(f"- **Acima de 12 anos:** {guest_counts['above_12']} × R$ {PRICING['above_12']:.2f} = R$ {guest_counts['above_12'] * PRICING['above_12']:.2f}")
+    
+    st.markdown(f"### 💰 **Total a pagar: R$ {total_amount:.2f}**")
+    
+    st.markdown("---")
+    
+    # Payment instructions
+    st.markdown(MESSAGES['payment_instructions'])
+    
+    # Confirmation details
+    st.success(f"✅ Confirmação registrada! ID: {confirmation_id}")
+    
+    # Navigation buttons
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("← Voltar e Corrigir Dados", type="secondary"):
+            st.session_state.show_payment = False
+            st.rerun()
+    
+    with col2:
+        if st.button("Nova Confirmação", type="primary"):
+            st.session_state.confirmed = False
+            st.session_state.participant_data = None
+            st.session_state.show_payment = False
+            st.session_state.guest_counts = None
+            st.session_state.total_amount = 0
+            st.rerun()
+
+def main():
+    """Main application flow."""
+    st.title(f"🎉 {EVENT_NAME}")
+    st.markdown(f"📅 **Data:** {EVENT_DATE}")
+    st.markdown(f"📍 **Local:** {EVENT_LOCATION}")
+    st.markdown("---")
+    
+    # Load participants
     participants_df = load_participants()
     
     if participants_df.empty:
-        st.error("Não foi possível carregar a lista de participantes. Entre em contato com a organização.")
+        st.error("Não foi possível carregar a lista de participantes.")
         return
     
-    # Display header
-    st.title(f"🎉 {EVENT_NAME}")
-    st.markdown(f"📅 **Data:** {EVENT_DATE} | 📍 **Local:** {EVENT_LOCATION}")
-    st.markdown("---")
-    
-    # Step 1: Name Input
-    if st.session_state.step == 'name_input':
-        st.write(MESSAGES['welcome'])
-        st.write("Por favor, informe seu nome completo:")
+    # Check which page to show
+    if st.session_state.show_payment:
+        show_payment_page()
+    elif not st.session_state.confirmed:
+        # Step 1: Name verification
+        st.markdown("### 👤 Verificação de Convidado")
         
-        # Create name input with autocomplete hint
-        name_input = st.text_input(
-            "Nome completo:",
-            key="name_field",
-            placeholder="Digite seu nome completo..."
-        )
+        name_input = st.text_input("Digite seu nome completo:", 
+                                   placeholder="Ex: João da Silva")
         
-        # Add a helper to show similar names if input is provided
-        if name_input and len(name_input) >= 3:
-            # CORREÇÃO: Garantir que estamos lidando com strings
-            # Find similar names in the list
-            similar_names = participants_df[
-                participants_df['full_name'].str.contains(name_input, case=False, na=False)
-            ]['full_name'].tolist()
-            
-            if similar_names and name_input not in similar_names:
-                st.info(f"💡 Nomes similares encontrados: {', '.join(similar_names[:3])}")
-        
-        # Submit button
-        if st.button("Próximo", type="primary", use_container_width=True):
-            if name_input.strip():
-                # CORREÇÃO: Converter input para string antes da comparação
-                # Check if participant exists (case-sensitive)
-                participant_match = participants_df[
-                    participants_df['full_name'] == name_input.strip()
-                ]
+        if st.button("Verificar"):
+            if name_input:
+                participant = find_participant(name_input, participants_df)
                 
-                if not participant_match.empty:
-                    # Store participant data
-                    st.session_state.participant_name = name_input.strip()
-                    st.session_state.participant_data = participant_match.iloc[0].to_dict()
-                    st.session_state.step = 'attendance_confirmation'
+                if participant is not None:
+                    st.session_state.participant_data = participant
+                    st.success(f"✅ Olá, {participant['full_name']}!")
+                    st.session_state.confirmed = True
                     st.rerun()
                 else:
                     st.error(MESSAGES['not_found'])
             else:
-                st.warning("Por favor, digite seu nome completo.")
+                st.warning("Por favor, digite seu nome.")
+    else:
+        # Step 2: Guest information form
+        show_guest_form()
+
+def admin_panel():
+    """Admin panel for viewing confirmations."""
+    st.title("🔐 Painel Administrativo")
     
-    # Step 2: Attendance Confirmation
-    elif st.session_state.step == 'attendance_confirmation':
-        st.write(f"Olá, **{st.session_state.participant_name}**! 👋")
-        st.write("Ficamos felizes em tê-lo(a) em nossa lista!")
-        st.write("")
-        st.write("Você poderá comparecer ao evento?")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("✅ Sim, confirmo presença", type="primary", use_container_width=True):
-                st.session_state.will_attend = True
-                st.session_state.step = 'guest_form'
-                st.rerun()
-        
-        with col2:
-            if st.button("❌ Não poderei comparecer", use_container_width=True):
-                st.session_state.will_attend = False
-                st.session_state.step = 'thank_you'
-                st.rerun()
+    password = st.text_input("Senha:", type="password")
     
-    # Step 3: Guest Form
-    elif st.session_state.step == 'guest_form':
-        st.write(f"**{st.session_state.participant_name}**, agora precisamos saber sobre seus convidados.")
-        st.info("💡 Lembre-se: crianças abaixo de 5 anos não pagam!")
+    if password == ADMIN_PASSWORD:
+        st.success("Acesso autorizado!")
         
-        with st.form("guest_form"):
-            st.subheader("Quantos convidados você levará em cada faixa etária?")
+        # Load confirmations
+        try:
+            df = pd.read_csv('./data/confirmations.csv')
             
-            # Create three columns for the inputs
-            col1, col2, col3 = st.columns(3)
+            # Statistics
+            st.markdown("### 📊 Estatísticas")
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                under_5 = st.number_input(
-                    "👶 Abaixo de 5 anos",
-                    min_value=0,
-                    max_value=MAX_GUESTS_PER_CATEGORY,
-                    value=0,
-                    step=1,
-                    help="Entrada gratuita"
-                )
+                st.metric("Total de Confirmações", len(df))
             
             with col2:
-                age_5_to_12 = st.number_input(
-                    "🧒 Entre 5 e 12 anos",
-                    min_value=0,
-                    max_value=MAX_GUESTS_PER_CATEGORY,
-                    value=0,
-                    step=1,
-                    help=f"R$ {PRICING['5_to_12']:.2f} por criança"
-                )
+                total_guests = df['guests_under_5'].sum() + df['guests_5_to_12'].sum() + df['guests_above_12'].sum()
+                st.metric("Total de Pessoas", total_guests)
             
             with col3:
-                above_12 = st.number_input(
-                    "👨 Acima de 12 anos",
-                    min_value=0,
-                    max_value=MAX_GUESTS_PER_CATEGORY,
-                    value=0,
-                    step=1,
-                    help=f"R$ {PRICING['above_12']:.2f} por pessoa"
+                total_revenue = df['total_amount'].sum()
+                st.metric("Valor Total", f"R$ {total_revenue:.2f}")
+            
+            with col4:
+                avg_amount = df['total_amount'].mean()
+                st.metric("Ticket Médio", f"R$ {avg_amount:.2f}")
+            
+            # Confirmations table
+            st.markdown("### 📋 Lista de Confirmações")
+            st.dataframe(df.sort_values('timestamp', ascending=False))
+            
+            # Export option
+            if FEATURES['export_data']:
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Baixar CSV",
+                    data=csv,
+                    file_name=f"confirmacoes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
                 )
-            
-            # Show live cost calculation
-            guest_data_preview = {
-                'under_5': under_5,
-                '5_to_12': age_5_to_12,
-                'above_12': above_12
-            }
-            
-            preview_cost = calculate_total_cost(guest_data_preview)
-            st.metric("Valor total estimado:", f"R$ {preview_cost:.2f}")
-            
-            # Submit button
-            submitted = st.form_submit_button(
-                "Confirmar e gerar pagamento",
-                type="primary",
-                use_container_width=True
-            )
-            
-            if submitted:
-                st.session_state.guest_data = guest_data_preview
-                st.session_state.step = 'payment'
-                st.rerun()
+        
+        except FileNotFoundError:
+            st.info("Nenhuma confirmação registrada ainda.")
     
-    # Step 4: Payment
-    elif st.session_state.step == 'payment':
-        st.subheader("📋 Resumo da sua confirmação")
-        
-        # Create summary
-        guest_data = st.session_state.guest_data
-        total_guests = sum(guest_data.values())
-        total_people = total_guests + 1  # Including the participant
-        
-        # Display participant info
-        st.write(f"**Participante:** {st.session_state.participant_name}")
-        st.write(f"**Total de pessoas:** {total_people} (você + {total_guests} convidado(s))")
-        
-        # Create detailed breakdown
-        st.subheader("💰 Detalhamento dos valores:")
-        
-        # Use columns for better layout
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            st.write(f"Você (participante)")
-            if guest_data['under_5'] > 0:
-                st.write(f"{guest_data['under_5']} convidado(s) abaixo de 5 anos")
-            if guest_data['5_to_12'] > 0:
-                st.write(f"{guest_data['5_to_12']} convidado(s) entre 5-12 anos")
-            if guest_data['above_12'] > 0:
-                st.write(f"{guest_data['above_12']} convidado(s) acima de 12 anos")
-        
-        with col2:
-            st.write(f"R$ {PRICING['above_12']:.2f}")
-            if guest_data['under_5'] > 0:
-                st.write("Gratuito")
-            if guest_data['5_to_12'] > 0:
-                st.write(f"R$ {guest_data['5_to_12'] * PRICING['5_to_12']:.2f}")
-            if guest_data['above_12'] > 0:
-                st.write(f"R$ {guest_data['above_12'] * PRICING['above_12']:.2f}")
-        
-        # Calculate and display total
-        total_cost = calculate_total_cost(guest_data)
-        st.markdown("---")
-        st.success(f"### Total a pagar: R$ {total_cost:.2f}")
-        
-        # Generate and display QR code
-        if total_cost > 0:
-            st.subheader("📱 QR Code para pagamento PIX")
-            
-            # Generate QR code
-            qr_buffer, confirmation_id = generate_qr_code(
-                total_cost,
-                st.session_state.participant_name
-            )
-            
-            # Display QR code centered
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.image(qr_buffer, caption=f"Valor: R$ {total_cost:.2f}")
-                st.info(f"**Código de confirmação:** {confirmation_id}")
-            
-            # Payment instructions
-            st.markdown(MESSAGES['payment_instructions'])
-            
-            # Save confirmation
-            save_confirmation(
-                st.session_state.participant_data,
-                guest_data,
-                confirmation_id
-            )
-            
-            # Success message
-            st.success(f"✅ Confirmação registrada! Código: {confirmation_id}")
-            
-            # Option to start over
-            if st.button("Fazer nova confirmação", use_container_width=True):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun()
-        else:
-            # No payment needed (only free guests)
-            st.info("Não há valor a pagar - todos os seus convidados têm entrada gratuita!")
-            confirmation_id = hashlib.md5(
-                f"{st.session_state.participant_name}{datetime.now().isoformat()}".encode()
-            ).hexdigest()[:8].upper()
-            
-            save_confirmation(
-                st.session_state.participant_data,
-                guest_data,
-                confirmation_id
-            )
-            
-            st.success(f"✅ Confirmação registrada! Código: {confirmation_id}")
-            
-            if st.button("Fazer nova confirmação", use_container_width=True):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun()
-    
-    # Step 5: Thank you (not attending)
-    elif st.session_state.step == 'thank_you':
-        st.balloons()
-        st.info(MESSAGES['thank_you_not_attending'])
-        st.write(f"Caso mude de ideia, você pode confirmar sua presença até 48 horas antes do evento.")
-        
-        if st.button("Voltar ao início", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
+    elif password:
+        st.error("Senha incorreta!")
 
-# Add admin section (if enabled in config)
-def admin_section():
-    """
-    Admin dashboard to view confirmations and statistics.
-    This is a simple implementation - enhance with authentication in production.
-    """
-    if FEATURES.get('admin_dashboard', False):
-        # Check if user pressed a secret key combination (for demo purposes)
-        if st.sidebar.button("🔐 Admin", key="admin_button"):
-            password = st.sidebar.text_input("Senha:", type="password")
-            
-            if password == ADMIN_PASSWORD:
-                st.sidebar.success("Acesso autorizado!")
-                
-                # Show admin options
-                if st.sidebar.button("Ver confirmações"):
-                    confirmations_file = 'data/confirmations/confirmations.csv'
-                    if os.path.exists(confirmations_file):
-                        df = pd.read_csv(confirmations_file)
-                        st.write("### Confirmações Registradas")
-                        st.dataframe(df)
-                        
-                        # Show statistics
-                        st.write("### Estatísticas")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total confirmações", len(df))
-                        with col2:
-                            total_amount = df['total_amount'].sum()
-                            st.metric("Valor total", f"R$ {total_amount:.2f}")
-                        with col3:
-                            total_people = len(df) + df[['guests_under_5', 'guests_5_to_12', 'guests_above_12']].sum().sum()
-                            st.metric("Total de pessoas", int(total_people))
-                    else:
-                        st.info("Ainda não há confirmações registradas.")
-
-# Run the application
+# Run the app
 if __name__ == "__main__":
-    # Add admin section to sidebar
-    admin_section()
+    # Check if admin mode
+    query_params = st.query_params
     
-    # Run main application
-    main()
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        f"Em caso de dúvidas, entre em contato: {st.session_state.get('EMAIL_SENDER', 'toni@ita90.com.br')}"
-    )
+    if 'admin' in query_params:
+        admin_panel()
+    else:
+        main()

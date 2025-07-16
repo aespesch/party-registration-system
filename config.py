@@ -51,7 +51,7 @@ MESSAGES = {
     3. Escaneie o QR Code acima
     4. Confirme o pagamento
     
-    IMPORTANTE: Não precisa mandar o comprovante via whatsapp!.
+    IMPORTANTE: Não precisa mandar o comprovante via whatsapp!
     """,
     "confirmation_email_subject": f"Confirmação de presença - {EVENT_NAME}"
 }
