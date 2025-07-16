@@ -10,28 +10,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Event Information
-EVENT_NAME = "Festa de Aniversário 2024"
-EVENT_DATE = "15 de dezembro de 2024"
-EVENT_LOCATION = "Salão de Festas Blue Diamond"
+EVENT_NAME = "Turma 90 - 35 Anos - Almoço Comemorativo"
+EVENT_DATE = "29 de novembro de 2025"
+EVENT_LOCATION = "Churrascaria Boigalê São José dos Campos"
 
 # Pricing Configuration (in Brazilian Reais)
 # These values determine how much each age group pays
 PRICING = {
     "under_5": 0,      # Kids under 5 enter for free
-    "5_to_12": 25,     # Children between 5-12 pay half price
-    "above_12": 50     # Adults and teens pay full price
+    "5_to_12": 150,     # Children between 5-12 pay half price
+    "above_12": 300     # Adults and teens pay full price
 }
 
 # PIX Payment Configuration
 # IMPORTANT: Never commit your actual PIX key to GitHub!
 # Use environment variables for production
-PIX_KEY = os.getenv("PIX_KEY", "seu_email@exemplo.com")  # Your PIX key
-PIX_MERCHANT_NAME = os.getenv("PIX_MERCHANT_NAME", "Organizador da Festa")
-PIX_CITY = os.getenv("PIX_CITY", "São Paulo")
+PIX_KEY = os.getenv("PIX_KEY", "toni@ita90.com.br")  # Your PIX key
+PIX_MERCHANT_NAME = os.getenv("PIX_MERCHANT_NAME", "Antônio Magno Lima Espeschit")
+PIX_CITY = os.getenv("PIX_CITY", "São José dos Campos-SP")
 
 # Email Configuration (for sending confirmations)
 # These should also come from environment variables in production
-EMAIL_SENDER = os.getenv("EMAIL_SENDER", "festa@exemplo.com")
+EMAIL_SENDER = os.getenv("EMAIL_SENDER", "toni@ita90.com.br")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")  # Keep empty if not using email
 
 # Data Source Configuration
@@ -51,14 +51,14 @@ MESSAGES = {
     3. Escaneie o QR Code acima
     4. Confirme o pagamento
     
-    Importante: Guarde o comprovante! Você precisará apresentá-lo na entrada.
+    IMPORTANTE: Não precisa mandar o comprovante via whatsapp!.
     """,
     "confirmation_email_subject": f"Confirmação de presença - {EVENT_NAME}"
 }
 
 # Guest Limits
 # Maximum number of guests allowed per age category
-MAX_GUESTS_PER_CATEGORY = 10
+MAX_GUESTS_PER_CATEGORY = 100
 
 # Application Settings
 # Page configuration for Streamlit

@@ -1,4 +1,4 @@
-"""
+"""fe
 Main Streamlit application for party registration and payment.
 This file orchestrates the entire user flow from name verification to payment.
 """
@@ -65,6 +65,9 @@ def load_participants():
         if missing_columns:
             st.error(f"Colunas faltando no CSV: {missing_columns}")
             return pd.DataFrame()
+        
+        # CORREÇÃO: Converter coluna 'full_name' para string
+        df['full_name'] = df['full_name'].astype(str)
         
         return df
     
@@ -222,7 +225,7 @@ def main():
     # Step 1: Name Input
     if st.session_state.step == 'name_input':
         st.write(MESSAGES['welcome'])
-        st.write("Por favor, informe seu nome completo exatamente como consta na lista:")
+        st.write("Por favor, informe seu nome completo:")
         
         # Create name input with autocomplete hint
         name_input = st.text_input(
@@ -233,6 +236,7 @@ def main():
         
         # Add a helper to show similar names if input is provided
         if name_input and len(name_input) >= 3:
+            # CORREÇÃO: Garantir que estamos lidando com strings
             # Find similar names in the list
             similar_names = participants_df[
                 participants_df['full_name'].str.contains(name_input, case=False, na=False)
@@ -244,6 +248,7 @@ def main():
         # Submit button
         if st.button("Próximo", type="primary", use_container_width=True):
             if name_input.strip():
+                # CORREÇÃO: Converter input para string antes da comparação
                 # Check if participant exists (case-sensitive)
                 participant_match = participants_df[
                     participants_df['full_name'] == name_input.strip()
@@ -498,5 +503,5 @@ if __name__ == "__main__":
     # Footer
     st.markdown("---")
     st.markdown(
-        f"Em caso de dúvidas, entre em contato: {st.session_state.get('EMAIL_SENDER', 'festa@exemplo.com')}"
+        f"Em caso de dúvidas, entre em contato: {st.session_state.get('EMAIL_SENDER', 'toni@ita90.com.br')}"
     )
