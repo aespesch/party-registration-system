@@ -36,7 +36,7 @@ SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")  # Keep empty if not using 
 
 # Data Source Configuration
 # Path to the CSV file containing participant information
-PARTICIPANTS_FILE = "data/participants.csv"
+PARTICIPANTS_FILE = "participants.csv"
 
 # User Interface Messages
 # Customize these messages to match your event's tone
