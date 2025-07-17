@@ -252,7 +252,7 @@ def generate_pix_qr_code(amount, participant_name, participant_id=None, tx_id=No
     img.save(buf, format='PNG')
     byte_img = buf.getvalue()
     
-    return byte_img
+    return byte_img, pix_payload
 
 def save_confirmation(participant_data, guest_counts, total_amount):
     """Save confirmation to CSV file."""
@@ -375,8 +375,8 @@ def show_payment_page():
     # Save confirmation
     confirmation_id = save_confirmation(participant, guest_counts, total_amount)
     
-    # Generate QR Code
-    qr_img = generate_pix_qr_code(total_amount, participant['full_name'])
+    # Generate QR Code and get PIX payload
+    qr_img, pix_payload = generate_pix_qr_code(total_amount, participant['full_name'])
     
     # Display QR Code
     st.markdown("### 📱 QR Code PIX")
@@ -384,8 +384,13 @@ def show_payment_page():
     with col2:
         st.image(qr_img, width=300)
     
+    # Display PIX copy code
+    st.markdown("### 📋 Código PIX Copia e Cola")
+    st.markdown("Clique no botão de copiar no canto direito do campo abaixo:")
+    st.code(pix_payload, language=None)
+    
     # Display amount breakdown
-    st.markdown("### 📋 Resumo dos Valores")
+    st.markdown("### 📊 Resumo dos Valores")
     
     if guest_counts['under_5'] > 0:
         st.markdown(f"- **Crianças até 5 anos:** {guest_counts['under_5']} × R$ {PRICING['under_5']:.2f} = R$ {guest_counts['under_5'] * PRICING['under_5']:.2f}")
