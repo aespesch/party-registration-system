@@ -36,15 +36,25 @@ def normalize_name(name):
     Normalize name for comparison by removing accents, extra spaces, 
     and converting to lowercase.
     """
+    # If name is not a string, return empty string
+    if not isinstance(name, str):
+        return ""
+    
     # Remove leading/trailing spaces
     name = name.strip()
+    
+    if name == "":
+        return ""
     
     # Convert to lowercase
     name = name.lower()
     
-    # Remove accents
+    # Normalize to decomposed form and remove accents
     name = unicodedata.normalize('NFKD', name)
     name = ''.join([c for c in name if not unicodedata.combining(c)])
+    
+    # Remove non-alphanumeric characters except spaces
+    name = re.sub(r'[^a-z0-9\s]', '', name)
     
     # Replace multiple spaces with single space
     name = re.sub(r'\s+', ' ', name)
@@ -52,24 +62,74 @@ def normalize_name(name):
     return name
 
 def load_participants():
-    """Load participants from CSV file."""
+    """Load participants from CSV file with debug info."""
     try:
-        df = pd.read_csv(PARTICIPANTS_FILE)
+        # Get absolute path and show debug info
+        abs_path = os.path.abspath(PARTICIPANTS_FILE)
+        st.info(f"🔍 Tentando carregar arquivo: {abs_path}")
+        
+        # Try common encodings for Portuguese
+        encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+        df = None
+        
+        for encoding in encodings:
+            try:
+                df = pd.read_csv(PARTICIPANTS_FILE, encoding=encoding)
+                st.success(f"✅ Arquivo carregado com sucesso usando codificação: {encoding}")
+                break
+            except UnicodeDecodeError:
+                st.warning(f"⚠️ Falha ao decodificar com {encoding}, tentando próxima...")
+                continue
+            except Exception as e:
+                st.error(f"❌ Erro inesperado com codificação {encoding}: {str(e)}")
+                continue
+        
+        if df is None:
+            st.error("❌ Não foi possível carregar o arquivo com nenhuma codificação testada.")
+            return pd.DataFrame()
+        
+        st.info(f"📊 Total de registros carregados: {len(df)}")
+        
+        # Show first two rows for debugging
+        if not df.empty:
+            st.info("📝 Amostra do arquivo (2 primeiras linhas):")
+            st.dataframe(df.head(2))
+        else:
+            st.warning("⚠️ O arquivo foi carregado, mas está vazio.")
+        
         return df
+    
     except FileNotFoundError:
-        st.error(f"Arquivo {PARTICIPANTS_FILE} não encontrado!")
+        st.error(f"❌ Arquivo não encontrado: {PARTICIPANTS_FILE}")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ Erro inesperado ao carregar o arquivo: {str(e)}")
         return pd.DataFrame()
 
 def find_participant(name, participants_df):
-    """Find participant in the list with flexible name matching."""
+    """Find participant in the list with flexible name matching and debug info."""
+    st.info(f"🔍 Buscando por: '{name}'")
     normalized_input = normalize_name(name)
+    st.info(f"🔠 Nome normalizado: '{normalized_input}'")
     
+    if participants_df.empty:
+        st.warning("⚠️ A lista de participantes está vazia. Nenhum nome pode ser encontrado.")
+        return None
+    
+    # Iterate over each row in the dataframe
     for idx, row in participants_df.iterrows():
         if 'full_name' in row:
-            normalized_db = normalize_name(row['full_name'])
-            if normalized_input == normalized_db:
+            original_db_name = row['full_name']
+            normalized_db_name = normalize_name(original_db_name)
+            
+            # Log comparison for debugging
+            st.info(f"🔍 Comparando com: '{original_db_name}' -> Normalizado: '{normalized_db_name}'")
+            
+            if normalized_input == normalized_db_name:
+                st.success(f"✅ Correspondência encontrada para: {original_db_name}")
                 return row
     
+    st.warning("⚠️ Nenhuma correspondência encontrada na lista de participantes.")
     return None
 
 def calculate_total(guests_under_5, guests_5_to_12, guests_above_12):
