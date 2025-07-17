@@ -159,9 +159,9 @@ def generate_pix_qr_code(amount, participant_name, participant_id=None, tx_id=No
     # Generate a unique transaction ID with participant ID comment
     if not tx_id:
         base_tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
-        # Add participant ID as comment in transaction ID format: ID=NNN
-        if participant_id:
-            tx_id = f"{base_tx_id}ID={participant_id}"
+        # Add participant ID as comment in transaction ID format: .NNN.
+        if participant_id is not None and str(participant_id).strip() != '':
+            tx_id = f"{base_tx_id}.{participant_id}."
         else:
             tx_id = base_tx_id
     
@@ -313,9 +313,8 @@ def show_payment_page():
     # Save confirmation
     confirmation_id = save_confirmation(participant, guest_counts, total_amount)
     
-    # Generate QR Code with participant ID
-    participant_id = participant.get('id', '')
-    qr_img = generate_pix_qr_code(total_amount, participant['full_name'], participant_id)
+    # Generate QR Code
+    qr_img = generate_pix_qr_code(total_amount, participant['full_name'])
     
     # Display QR Code
     st.markdown("### 📱 QR Code PIX")
