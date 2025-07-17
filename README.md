@@ -8,11 +8,11 @@ Este sistema permite que convidados confirmem sua presença em eventos, informem
 
 ## Funcionalidades Principais
 
-- **Verificação de Convidados**: Sistema valida se a pessoa está na lista de convidados
+- **Verificação de Convidados**: Sistema valida se a pessoa está na lista de convidados. A validação é feita comparando o nome digitado pelo usuário com o campo full_name do arquivo participants.csv. A comparação é feita de modo que maiúsculas, minúsculas, acentos e espaços em branco não façam diferença. Ou seja: " jose da  silva" e "José    da   Silva" são iguais.
 - **Formulário Dinâmico**: Coleta informações sobre acompanhantes por faixa etária
 - **Cálculo Automático**: Calcula o valor total baseado nas configurações de preço
 - **Pagamento PIX**: Gera QR Code para pagamento instantâneo
-- **Registro de Confirmações**: Salva todas as confirmações para controle do organizador
+- **Registro de Confirmações**: Salva todas as confirmações para controle do organizador no arquivo ./data/confirations.csv com os seguintes campos: confirmation_id,timestamp,participant_name,participant_id,participant_email,guests_under_5,guests_5_to_12,guests_above_12,total_amount,payment_status
 - **Painel Administrativo**: Visualização de estatísticas e confirmações (opcional)
 
 ## Tecnologias Utilizadas
@@ -42,6 +42,7 @@ party-registration-system/
     └── __init__.py
 ```
 
+
 ## Instalação e Configuração Local
 
 ### Pré-requisitos
@@ -55,7 +56,7 @@ party-registration-system/
 
 1. **Clone o repositório**
    ```bash
-   git clone https://github.com/SEU_USUARIO/party-registration-system.git
+   git clone https://github.com/aespesch/party-registration-system.git
    cd party-registration-system
    ```
 

@@ -303,7 +303,8 @@ def show_guest_form():
             st.session_state.participant_data = None
             st.rerun()
     else:
-        st.markdown("### 👥 Informações sobre Participantes")
+        st.markdown("### 👥 Informações sobre Participantes (R$ 250/pessoa)")
+        st.markdown("Só está sendo cobrado 30% do valor total. Abaixo de 5 anos é grátis. Entre 5 e 12 anos paga meia.")
         
         col1, col2, col3 = st.columns(3)
         
@@ -437,7 +438,7 @@ def main():
         st.error("Lista de participantes vazia ou não carregada")
         return
     
-    st.success(f"Total de participantes carregados: {len(participants_df)}")
+    # st.success(f"Total de participantes carregados: {len(participants_df)}")
     
     # Check which page to show
     if st.session_state.show_payment:

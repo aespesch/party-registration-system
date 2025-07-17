@@ -18,8 +18,8 @@ EVENT_LOCATION = "Churrascaria Boigalê São José dos Campos"
 # These values determine how much each age group pays
 PRICING = {
     "under_5": 0,      # Kids under 5 enter for free
-    "5_to_12": 150,     # Children between 5-12 pay half price
-    "above_12": 300     # Adults and teens pay full price
+    "5_to_12": 37.50,  # Children between 5-12 pay half price
+    "above_12": 75.00  # Adults and teens pay full price
 }
 
 # PIX Payment Configuration
