@@ -67,7 +67,7 @@ def load_participants():
     try:
         # Get absolute path and show debug info
         abs_path = os.path.abspath(PARTICIPANTS_FILE)
-        st.info(f"🔍 Tentando carregar arquivo: {abs_path}")
+        #st.info(f"🔍 Tentando carregar arquivo: {abs_path}")
         
         # Try common encodings for Portuguese
         encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
@@ -76,7 +76,7 @@ def load_participants():
         for encoding in encodings:
             try:
                 df = pd.read_csv(PARTICIPANTS_FILE, encoding=encoding)
-                st.success(f"✅ Arquivo carregado com sucesso usando codificação: {encoding}")
+                #st.success(f"✅ Arquivo carregado com sucesso usando codificação: {encoding}")
                 break
             except UnicodeDecodeError:
                 st.warning(f"⚠️ Falha ao decodificar com {encoding}, tentando próxima...")
@@ -89,14 +89,14 @@ def load_participants():
             st.error("❌ Não foi possível carregar o arquivo com nenhuma codificação testada.")
             return pd.DataFrame()
         
-        st.info(f"📊 Total de registros carregados: {len(df)}")
+        #st.info(f"📊 Total de registros carregados: {len(df)}")
         
         # Show first two rows for debugging
-        if not df.empty:
-            st.info("📝 Amostra do arquivo (2 primeiras linhas):")
-            st.dataframe(df.head(2))
-        else:
-            st.warning("⚠️ O arquivo foi carregado, mas está vazio.")
+        # if not df.empty:
+        #     st.info("📝 Amostra do arquivo (2 primeiras linhas):")
+        #     st.dataframe(df.head(2))
+        # else:
+        #     st.warning("⚠️ O arquivo foi carregado, mas está vazio.")
         
         return df
     
@@ -109,9 +109,9 @@ def load_participants():
 
 def find_participant(name, participants_df):
     """Find participant in the list with flexible name matching and debug info."""
-    st.info(f"🔍 Buscando por: '{name}'")
+    # st.info(f"🔍 Buscando por: '{name}'")
     normalized_input = normalize_name(name)
-    st.info(f"🔠 Nome normalizado: '{normalized_input}'")
+    # st.info(f"🔠 Nome normalizado: '{normalized_input}'")
     
     if participants_df.empty:
         st.warning("⚠️ A lista de participantes está vazia. Nenhum nome pode ser encontrado.")
@@ -430,7 +430,7 @@ def main():
     st.markdown("---")
     
     # Load participants
-    st.info("Sistema iniciado...")
+    # st.info("Sistema iniciado...")
     participants_df = load_participants()
     
     if participants_df.empty:
