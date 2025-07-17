@@ -136,9 +136,6 @@ def generate_emv_code(key, amount, merchant_name, city, tx_id=None):
     
     # Additional Data Field (62) - Transaction ID
     if tx_id and tx_id != "***":
-        # Generate a more robust transaction ID if not provided
-        if len(tx_id) < 10:
-            tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8]}"
         tx_field = f"05{len(tx_id):02d}{tx_id}"
         payload += f"62{len(tx_field):02d}{tx_field}"
     else:
@@ -157,13 +154,18 @@ def generate_emv_code(key, amount, merchant_name, city, tx_id=None):
     
     return payload + crc_value
 
-def generate_pix_qr_code(amount, participant_name, tx_id=None):
-    """Generate PIX QR Code for payment - ATUALIZADA"""
-    # Generate a unique transaction ID if not provided
+def generate_pix_qr_code(amount, participant_name, participant_id=None, tx_id=None):
+    """Generate PIX QR Code for payment with participant ID comment"""
+    # Generate a unique transaction ID with participant ID comment
     if not tx_id:
-        tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8]}"
+        base_tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+        # Add participant ID as comment in transaction ID format: ID=NNN
+        if participant_id:
+            tx_id = f"{base_tx_id}ID={participant_id}"
+        else:
+            tx_id = base_tx_id
     
-    # Pass transaction ID
+    # Pass transaction ID with participant ID comment
     pix_payload = generate_emv_code(
         PIX_KEY,
         amount,
@@ -311,8 +313,9 @@ def show_payment_page():
     # Save confirmation
     confirmation_id = save_confirmation(participant, guest_counts, total_amount)
     
-    # Generate QR Code
-    qr_img = generate_pix_qr_code(total_amount, participant['full_name'])
+    # Generate QR Code with participant ID
+    participant_id = participant.get('id', '')
+    qr_img = generate_pix_qr_code(total_amount, participant['full_name'], participant_id)
     
     # Display QR Code
     st.markdown("### 📱 QR Code PIX")
