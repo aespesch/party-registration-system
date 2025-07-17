@@ -438,11 +438,14 @@ def main():
     st.markdown("---")
     
     # Load participants
+    st.info("Sistema iniciado...")
     participants_df = load_participants()
     
     if participants_df.empty:
-        st.error("Não foi possível carregar a lista de participantes.")
+        st.error("Lista de participantes vazia ou não carregada")
         return
+    
+    st.success(f"Total de participantes carregados: {len(participants_df)}")
     
     # Check which page to show
     if st.session_state.show_payment:
