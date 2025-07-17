@@ -15,15 +15,7 @@ import re
 import uuid
 import crcmod
 from config import *
-import subprocess
 
-# Garante que atualiza a partir do github
-if st.secrets.get("AUTO_UPDATE", False):
-    try:
-        result = subprocess.check_output(["git", "pull"], stderr=subprocess.STDOUT)
-        st.toast(f"Atualizado do GitHub: {result.decode()}")
-    except Exception as e:
-        st.toast(f"Erro na atualização: {str(e)}", icon="⚠️")
 
 # Page configuration
 st.set_page_config(**PAGE_CONFIG)
