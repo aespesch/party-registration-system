@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Event Information
-EVENT_NAME = "Turma 90 - 35 Anos - Almoço Comemorativo"
-EVENT_DATE = "29 de novembro de 2025"
+EVENT_NAME = "T90 - 35 Anos - Almoço Comemorativo"
+EVENT_DATE = "29 de novembro de 2025 13:00"
 EVENT_LOCATION = "Churrascaria Boigalê São José dos Campos"
 
 # Pricing Configuration (in Brazilian Reais)

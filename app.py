@@ -79,73 +79,106 @@ def calculate_total(guests_under_5, guests_5_to_12, guests_above_12):
              guests_above_12 * PRICING['above_12'])
     return total
 
-def generate_emv_code(key, amount, merchant_name, city, tx_id="***"):
-    """Generate a valid PIX EMV code (BR Code)."""
-    def compute_crc16(payload):
-        crc16 = crcmod.predefined.Crc('crc-ccitt-false')
-        crc16.update(payload.encode('utf-8'))
-        return format(crc16.crcValue, '04X')
+def generate_emv_code(key, amount, merchant_name, city, tx_id=None):
+    """Generate 100% valid PIX EMV code following Brazilian Central Bank specs"""
+    # Helper function to sanitize and format text
+    def format_text(text, max_length, remove_accents=True):
+        if remove_accents:
+            # Remove accents
+            text = unicodedata.normalize('NFD', text)
+            text = ''.join(c for c in text if not unicodedata.combining(c))
+        # Keep spaces and basic punctuation for readability
+        text = re.sub(r'[^a-zA-Z0-9\s\.\-]', '', text)
+        # Truncate to max length
+        return text[:max_length]
     
-    # Format amount with 2 decimal places
-    formatted_amount = f"{amount:.2f}"
+    # Format amount with ALWAYS 2 decimal places
+    amount_str = f"{amount:.2f}"
     
-    # Build TLV format helper
-    def tlv(tag, value):
-        return f"{tag:02d}{len(value):02d}{value}"
+    # Clean the PIX key (remove spaces and special chars)
+    clean_key = re.sub(r'[^a-zA-Z0-9@\.\-]', '', key)
     
-    # Build the PIX payload
-    payload = ""
+    # Sanitize merchant name and city
+    sanitized_merchant = format_text(merchant_name, 25, remove_accents=True).upper()
+    sanitized_city = format_text(city, 15, remove_accents=True).upper()
     
-    # Payload Format Indicator
-    payload += tlv(0, "01")
+    # Build payload components
+    payload = "000201"  # Payload format indicator
     
-    # Merchant Account Information - PIX
-    pix_data = tlv(0, "BR.GOV.BCB.PIX") + tlv(1, key)
-    payload += tlv(26, pix_data)
+    # Merchant Account Information (26)
+    gui = "BR.GOV.BCB.PIX"
+    # Format: 0014BR.GOV.BCB.PIX + 01 + key length + key
+    pix_key_field = f"01{len(clean_key):02d}{clean_key}"
+    pix_data = f"0014{gui}{pix_key_field}"
+    payload += f"26{len(pix_data):02d}{pix_data}"
     
-    # Merchant Category Code
-    payload += tlv(52, "0000")
+    # Merchant Category Code (52)
+    mcc = "0000"
+    payload += f"52{len(mcc):02d}{mcc}"
     
-    # Transaction Currency (BRL)
-    payload += tlv(53, "986")
+    # Transaction Currency (53)
+    currency = "986"  # BRL
+    payload += f"53{len(currency):02d}{currency}"
     
-    # Transaction Amount
-    payload += tlv(54, formatted_amount)
+    # Transaction Amount (54) - only include if amount > 0
+    if amount > 0:
+        payload += f"54{len(amount_str):02d}{amount_str}"
     
-    # Country Code
-    payload += tlv(58, "BR")
+    # Country Code (58)
+    country = "BR"
+    payload += f"58{len(country):02d}{country}"
     
-    # Merchant Name (max 25 chars)
-    payload += tlv(59, merchant_name[:25])
+    # Merchant Name (59)
+    payload += f"59{len(sanitized_merchant):02d}{sanitized_merchant}"
     
-    # Merchant City (max 15 chars)
-    payload += tlv(60, city[:15])
+    # Merchant City (60)
+    payload += f"60{len(sanitized_city):02d}{sanitized_city}"
     
-    # Additional Data Field Template
-    if tx_id != "***":
-        additional_data = tlv(5, tx_id)
-        payload += tlv(62, additional_data)
+    # Additional Data Field (62) - Transaction ID
+    if tx_id and tx_id != "***":
+        # Generate a more robust transaction ID if not provided
+        if len(tx_id) < 10:
+            tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8]}"
+        tx_field = f"05{len(tx_id):02d}{tx_id}"
+        payload += f"62{len(tx_field):02d}{tx_field}"
+    else:
+        # Generate a unique transaction ID
+        unique_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8]}"
+        tx_field = f"05{len(unique_id):02d}{unique_id}"
+        payload += f"62{len(tx_field):02d}{tx_field}"
     
-    # CRC16 (placeholder)
+    # Add CRC placeholder
     payload += "6304"
     
-    # Calculate and append CRC16
-    crc = compute_crc16(payload)
-    payload += crc
+    # Calculate CRC16-CCITT
+    crc16 = crcmod.predefined.Crc('crc-ccitt-false')
+    crc16.update(payload.encode('utf-8'))
+    crc_value = format(crc16.crcValue, '04X')
     
-    return payload
+    return payload + crc_value
 
-def generate_pix_qr_code(amount, participant_name):
-    """Generate PIX QR Code for payment."""
+def generate_pix_qr_code(amount, participant_name, tx_id=None):
+    """Generate PIX QR Code for payment - ATUALIZADA"""
+    # Generate a unique transaction ID if not provided
+    if not tx_id:
+        tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8]}"
+    
+    # Pass transaction ID
     pix_payload = generate_emv_code(
         PIX_KEY,
         amount,
         PIX_MERCHANT_NAME,
-        PIX_CITY
+        PIX_CITY,
+        tx_id=tx_id
     )
     
     # Generate QR Code
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
+    )
     qr.add_data(pix_payload)
     qr.make(fit=True)
     
