@@ -432,7 +432,27 @@ def show_payment_page():
 
 def main():
     """Main application flow."""
-    st.title(f"🎉 {EVENT_NAME}")
+    # Custom CSS for better title display - smaller font to prevent line wrapping
+    st.markdown("""
+    <style>
+    .event-title {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        color: rgb(9, 171, 59) !important;
+        margin-bottom: 0.5rem !important;
+        line-height: 1.2 !important;
+    }
+    @media (max-width: 768px) {
+        .event-title {
+            font-size: 1.5rem !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Display title with custom styling to prevent line wrapping
+    st.markdown(f'<h1 class="event-title">🎉 {EVENT_NAME}</h1>', unsafe_allow_html=True)
+    
     st.markdown(f"📅 **Data:** {EVENT_DATE}")
     st.markdown(f"📍 **Local:** {EVENT_LOCATION}")
     st.markdown("---")
