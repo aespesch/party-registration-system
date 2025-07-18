@@ -429,6 +429,7 @@ def show_payment_page():
             st.session_state.total_amount = 0
             st.rerun()
 
+
 def main():
     """Main application flow."""
     st.title(f"🎉 {EVENT_NAME}")
