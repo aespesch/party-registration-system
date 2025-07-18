@@ -29,5 +29,12 @@ if %errorlevel% equ 0 (
     echo Alterações enviadas para o GitHub.
 )
 
+echo -------------------------------
+echo local
+git log --oneline -5
+echo -------------------------------
+echo remote
+git log --oneline origin/main -5
+
 echo Sincronização completa!
 pause
