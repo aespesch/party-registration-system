@@ -303,7 +303,7 @@ def show_guest_form():
             st.session_state.participant_data = None
             st.rerun()
     else:
-        st.markdown("### 👥 Informações sobre Participantes (R\$ 250/pessoa)")
+        st.markdown("### 👥 Informações sobre Participantes (R$ 250/pessoa)")
         st.markdown("Só está sendo cobrado 30% do valor total. Abaixo de 5 anos é grátis. Entre 5 e 12 anos paga meia.")
         
         col1, col2, col3 = st.columns(3)
@@ -317,7 +317,7 @@ def show_guest_form():
                                               key="under_5")
         
         with col2:
-            st.markdown(f"**Crianças 5-12 anos** (R\$ {PRICING['5_to_12']})")
+            st.markdown(f"**Crianças 5-12 anos** (R$ {PRICING['5_to_12']})")
             guests_5_to_12 = st.number_input("Quantidade:", 
                                               min_value=0, 
                                               max_value=MAX_GUESTS_PER_CATEGORY,
@@ -325,7 +325,7 @@ def show_guest_form():
                                               key="5_to_12")
         
         with col3:
-            st.markdown(f"**Acima de 12 anos** (R\$ {PRICING['above_12']})")
+            st.markdown(f"**Acima de 12 anos** (R$ {PRICING['above_12']})")
             guests_above_12 = st.number_input("Quantidade:", 
                                                min_value=1,  # At least the participant
                                                max_value=MAX_GUESTS_PER_CATEGORY,
@@ -342,7 +342,7 @@ def show_guest_form():
         total_amount = calculate_total(guests_under_5, guests_5_to_12, guests_above_12)
         
         st.markdown("---")
-        st.markdown(f"### 💰 Valor Total: R\$ {total_amount:.2f}")
+        st.markdown(f"### 💰 Valor Total: R$ {total_amount:.2f}")
         
         # Generate payment
         if total_amount > 0:
@@ -394,15 +394,15 @@ def show_payment_page():
     st.markdown("### 📊 Resumo dos Valores")
     
     if guest_counts['under_5'] > 0:
-        st.markdown(f"- **Crianças até 5 anos:** {guest_counts['under_5']} × R\$ {PRICING['under_5']:.2f} = R\$ {guest_counts['under_5'] * PRICING['under_5']:.2f}")
+        st.markdown(f"- **Crianças até 5 anos:** {guest_counts['under_5']} × R\\$ {PRICING['under_5']:.2f} = R\\$ {guest_counts['under_5'] * PRICING['under_5']:.2f}")
     
     if guest_counts['5_to_12'] > 0:
-        st.markdown(f"- **Crianças 5-12 anos:** {guest_counts['5_to_12']} × R\$ {PRICING['5_to_12']:.2f} = R\$ {guest_counts['5_to_12'] * PRICING['5_to_12']:.2f}")
+        st.markdown(f"- **Crianças 5-12 anos:** {guest_counts['5_to_12']} × R\\$ {PRICING['5_to_12']:.2f} = R\\$ {guest_counts['5_to_12'] * PRICING['5_to_12']:.2f}")
     
     if guest_counts['above_12'] > 0:
-        st.markdown(f"- **Acima de 12 anos:** {guest_counts['above_12']} × R\$ {PRICING['above_12']:.2f} = R\$ {guest_counts['above_12'] * PRICING['above_12']:.2f}")
+        st.markdown(f"- **Acima de 12 anos:** {guest_counts['above_12']} × R\\$ {PRICING['above_12']:.2f} = R\\$ {guest_counts['above_12'] * PRICING['above_12']:.2f}")
     
-    st.markdown(f"### 💰 **Total a pagar: R\$ {total_amount:.2f}**")
+    st.markdown(f"### 💰 **Total a pagar: R\\$ {total_amount:.2f}**")
     
     st.markdown("---")
     
@@ -520,11 +520,11 @@ def admin_panel():
             
             with col3:
                 total_revenue = df['total_amount'].sum()
-                st.metric("Valor Total", f"R\$ {total_revenue:.2f}")
+                st.metric("Valor Total", f"R\\$ {total_revenue:.2f}")
             
             with col4:
                 avg_amount = df['total_amount'].mean()
-                st.metric("Ticket Médio", f"R\$ {avg_amount:.2f}")
+                st.metric("Ticket Médio", f"R\\$ {avg_amount:.2f}")
             
             # Confirmations table
             st.markdown("### 📋 Lista de Confirmações")
