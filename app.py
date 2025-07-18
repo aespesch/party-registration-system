@@ -124,7 +124,7 @@ def find_participant(name, participants_df):
             normalized_db_name = normalize_name(original_db_name)
             
             # Log comparison for debugging
-            st.info(f"🔍 Comparando com: '{original_db_name}' -> Normalizado: '{normalized_db_name}'")
+            # st.info(f"🔍 Comparando com: '{original_db_name}' -> Normalizado: '{normalized_db_name}'")
             
             if normalized_input == normalized_db_name:
                 st.success(f"✅ Correspondência encontrada para: {original_db_name}")
@@ -219,12 +219,12 @@ def generate_pix_qr_code(amount, participant_name, participant_id=None, tx_id=No
     """Generate PIX QR Code for payment with participant ID comment"""
     # Generate a unique transaction ID with participant ID comment
     if not tx_id:
-        base_tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
-        # Add participant ID as comment in transaction ID format: .NNN.
+        # Add participant ID as comment in transaction ID format: IDNNNID
         if participant_id is not None and str(participant_id).strip() != '':
-            tx_id = f"{base_tx_id}.{participant_id}."
+            tx_id = f"ID{participant_id}ID"
         else:
-            tx_id = base_tx_id
+            # Fallback to unique transaction ID if no participant ID
+            tx_id = f"PIX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
     
     # Pass transaction ID with participant ID comment
     pix_payload = generate_emv_code(
@@ -376,7 +376,8 @@ def show_payment_page():
     confirmation_id = save_confirmation(participant, guest_counts, total_amount)
     
     # Generate QR Code and get PIX payload
-    qr_img, pix_payload = generate_pix_qr_code(total_amount, participant['full_name'])
+    participant_id = participant.get('id', '')
+    qr_img, pix_payload = generate_pix_qr_code(total_amount, participant['full_name'], participant_id)
     
     # Display QR Code
     st.markdown("### 📱 QR Code PIX")
@@ -452,7 +453,7 @@ def main():
         # Step 1: Name verification
         st.markdown("### 👤 Verificação de Convidado")
         
-        name_input = st.text_input("Digite seu nome completo:", 
+        name_input = st.text_input("Digite seu nome completo e acione o botão 'Verificar':", 
                                    placeholder="Ex: João da Silva")
         
         if st.button("Verificar"):
