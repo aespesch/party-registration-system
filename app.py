@@ -266,7 +266,6 @@ def save_confirmation(participant_data, guest_counts, total_amount):
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'participant_name': participant_data['full_name'],
         'participant_id': participant_data.get('id', ''),
-        'participant_email': participant_data.get('email', ''),
         'guests_under_5': guest_counts['under_5'],
         'guests_5_to_12': guest_counts['5_to_12'],
         'guests_above_12': guest_counts['above_12'],
